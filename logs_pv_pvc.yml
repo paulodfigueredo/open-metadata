@@ -8,7 +8,7 @@ spec:
   accessModes:
     - ReadWriteMany
   nfs:
-    server: <NFS_SERVER_CLUSTER_IP>
+    server: 10.36.5.235
     path: "/airflow-logs"
 
 ---
