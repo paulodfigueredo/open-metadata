@@ -16,24 +16,22 @@ volumes:
   ingestion-volume-tmp:
   es-data:
 services:
-  postgresql:
-    container_name: openmetadata_postgresql
-    image: docker.getcollate.io/openmetadata/postgresql:0.13.2-beta
+  mysql:
+    container_name: openmetadata_mysql
+    image: docker.getcollate.io/openmetadata/db:0.13.2
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
+      MYSQL_ROOT_PASSWORD: password
     expose:
-      - 5432
+      - 3306
     ports:
-      - "5432:5432"
+      - "3306:3306"
     volumes:
-     - ./docker-volume/db-data-postgres:/var/lib/postgresql/data
-    
+     - ./docker-volume/db-data:/var/lib/mysql
     networks:
       - app_net
     healthcheck:
-      test: psql -U postgres -tAc 'select 1' -d openmetadata_db
+      test: mysql --user=root --password=$$MYSQL_ROOT_PASSWORD --silent --execute "use openmetadata_db"
       interval: 15s
       timeout: 10s
       retries: 10
@@ -55,7 +53,7 @@ services:
   openmetadata-server:
     container_name: openmetadata_server
     restart: always
-    image: docker.getcollate.io/openmetadata/server:0.13.2-beta
+    image: docker.getcollate.io/openmetadata/server:0.13.2
     environment:
       # OpenMetadata Server Authentication Configuration
       AUTHORIZER_CLASS_NAME: ${AUTHORIZER_CLASS_NAME:-org.openmetadata.service.security.DefaultAuthorizer}
@@ -82,14 +80,14 @@ services:
       # OpenMetadata Server Airflow Configuration
       AIRFLOW_HOST: ${AIRFLOW_HOST:-http://ingestion:8080}
       SERVER_HOST_API_URL: ${SERVER_HOST_API_URL:-http://openmetadata-server:8585/api}
-      #Database configuration for postgresql
-      DB_DRIVER_CLASS: ${DB_DRIVER_CLASS:-org.postgresql.Driver}
-      DB_SCHEME: ${DB_SCHEME:-postgresql}
+      # Database configuration for MySQL
+      DB_DRIVER_CLASS: ${DB_DRIVER_CLASS:-com.mysql.cj.jdbc.Driver}
+      DB_SCHEME: ${DB_SCHEME:-mysql}
       DB_USE_SSL: ${DB_USE_SSL:-false}
       DB_USER: ${DB_USER:-openmetadata_user}
       DB_USER_PASSWORD: ${DB_USER_PASSWORD:-openmetadata_password}
-      DB_HOST: ${DB_HOST:-postgresql}
-      DB_PORT: ${DB_PORT:-5432}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
       OM_DATABASE: ${OM_DATABASE:-openmetadata_db}
       # Airflow SSL Configurations
       AIRFLOW_VERIFY_SSL: ${AIRFLOW_VERIFY_SSL:-"no-ssl"}
@@ -112,7 +110,7 @@ services:
     depends_on:
       elasticsearch:
         condition: service_started
-      postgresql:
+      mysql:
         condition: service_healthy
     networks:
       - app_net
@@ -121,11 +119,11 @@ services:
 
   ingestion:
     container_name: openmetadata_ingestion
-    image: docker.getcollate.io/openmetadata/ingestion:0.13.2-beta
+    image: docker.getcollate.io/openmetadata/ingestion:0.13.2
     depends_on:
       elasticsearch:
         condition: service_started
-      postgresql:
+      mysql:
         condition: service_healthy
       openmetadata-server:
         condition: service_started
@@ -133,11 +131,11 @@ services:
       AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
-      DB_HOST: ${AIRFLOW_DB_HOST:-postgresql}
-      DB_PORT: ${AIRFLOW_DB_PORT:-5432}
+      DB_HOST: ${AIRFLOW_DB_HOST:-mysql}
+      DB_PORT: ${AIRFLOW_DB_PORT:-3306}
       AIRFLOW_DB: ${AIRFLOW_DB:-airflow_db}
+      AIRFLOW_DB_SCHEME: ${AIRFLOW_DB_SCHEME:-mysql+pymysql}
       DB_USER: ${AIRFLOW_DB_USER:-airflow_user}
-      DB_SCHEME: ${AIRFLOW_DB_SCHEME:-postgresql+psycopg2}
       DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_pass}
     entrypoint: /bin/bash
     command:
@@ -152,6 +150,7 @@ services:
       - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
       - ingestion-volume-dags:/opt/airflow/dags
       - ingestion-volume-tmp:/tmp
+
 
 networks:
   app_net:
